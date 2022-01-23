@@ -1,0 +1,410 @@
+!*******************************************************************************
+!Subroutine - rapid_routing
+!*******************************************************************************
+subroutine rapid_routing(ZV_C1,ZV_C2,ZV_C3,ZV_Qext,                            &
+                         ZV_QoutinitR,ZV_VinitR,                               &
+                         ZV_QoutR,ZV_QoutbarR,ZV_VR,ZV_VbarR)
+
+!Purpose:
+!Performs flow calculation in each reach of a river network using the Muskingum
+!method (McCarthy 1938).  Also calculates the volume of each reach using a
+!simple first order approximation
+!Author: 
+!Cedric H. David, 2008-2015. 
+
+
+!*******************************************************************************
+!Declaration of variables
+!*******************************************************************************
+use netcdf
+use rapid_var, only :                                                          &
+                   ZS_dtR,IS_R,JS_R,                                           &
+                   ZM_Net,ZM_TC1,                                              &
+                   ZV_b,ZV_babsmax,ZV_bhat,                                    &
+                   ZV_QoutprevR,ZV_VprevR,ZV_QoutRabsmin,ZV_QoutRabsmax,       &
+                   ZV_QoutRhat,                                                &
+                   ZV_VoutR,ZV_Vext,                                           &
+                   ierr,ksp,                                                   &
+                   ZS_one,IS_ksp_iter,IS_ksp_iter_max,                         &
+                   vecscat,ZV_SeqZero,ZV_pointer,rank,                         &
+                   IS_nc_status,IS_nc_id_fil_Qout,IS_nc_id_var_Qout,           &
+                   IV_nc_start,IV_nc_count2,                                   &
+                   IS_riv_bas,JS_riv_bas,IM_index_up,                          &
+                   IS_opt_routing,IV_nbup,IV_riv_index,                        &
+                   BS_opt_influence,     &
+                   IV_riv_loc1,SHAPE1,FLOW  !lpr added for Muskingum-Cunge
+
+
+implicit none
+
+
+!*******************************************************************************
+!Includes
+!*******************************************************************************
+#include "finclude/petscsys.h"       
+!base PETSc routines
+#include "finclude/petscvec.h"  
+#include "finclude/petscvec.h90"
+!vectors, and vectors in Fortran90 
+#include "finclude/petscmat.h"    
+!matrices
+#include "finclude/petscksp.h"    
+!Krylov subspace methods
+#include "finclude/petscpc.h"     
+!preconditioners
+#include "finclude/petscviewer.h"
+!viewers (allows writing results in file for example)
+
+
+!*******************************************************************************
+!Intent (in/out), and local variables 
+!*******************************************************************************
+Vec, intent(in)    :: ZV_C1,ZV_C2,ZV_C3,ZV_Qext,                               &
+                      ZV_QoutinitR,ZV_VinitR 
+Vec, intent(out)   :: ZV_QoutR,ZV_QoutbarR
+Vec                :: ZV_VR,ZV_VbarR
+
+PetscInt :: IS_localsize,JS_localsize
+PetscScalar, pointer :: ZV_QoutR_p(:),ZV_QoutprevR_p(:),ZV_QoutinitR_p(:),     &
+                        ZV_QoutbarR_p(:),ZV_Qext_p(:),ZV_C1_p(:),ZV_C2_p(:),   &
+                        ZV_C3_p(:),ZV_b_p(:),                                  &
+                        ZV_babsmax_p(:),ZV_QoutRabsmin_p(:),ZV_QoutRabsmax_p(:)
+
+
+!----------Parameters needed for Muskingum-Cunge method----
+!---lpr: April 2017
+character(len=100) :: f_params='./rapid_input_tx/MuskCunge/RAPID_reordered_MC_params.csv'
+integer :: iriv,nriv
+!input params: bw=bottom width, ss=side slope, bs=bottom slope, ll=length,
+!hinit=initial depth
+integer, dimension(16906) :: comid
+real,dimension(16906) :: bw,ss,bs,ll,nchan,hinit
+Vec :: ZV_bw, ZV_ss, ZV_bs, ZV_ll, ZV_nchan, ZV_hinit
+!other input variables from each time step calculation---
+Vec :: mc_ql,mc_quc
+PetscScalar, pointer :: mc_ql_p(:),mc_quc_p(:)  !for iterations
+PetscScalar, pointer :: ZV_bw_p(:),ZV_z_p(:),ZV_h_p(:),ZV_bs_p(:),ZV_nchan_p(:),&
+        ZV_ll_p(:)
+
+!calculated variables: in/out
+Vec :: mc_C1,mc_C2,mc_C3,mc_QoutinitR,mc_VinitR
+!other calculated variables
+Vec :: ZV_z !trapezoid distance (m)
+Vec :: ZV_h !depth of flow  -- not used now
+Vec :: ZV_qp !peak flow
+Vec :: ZV_Tw !top width at peak flow
+Vec :: ZV_Ck !wave celerity (m/s)
+Vec :: ZV_x, ZV_Km
+PetscScalar, pointer :: ZV_Tw_p(:),ZV_Ck_p(:),ZV_x_p(:),ZV_Km_p(:),ZV_qp_p(:)
+
+real :: mc_error,shapefn,sh1,sh2,sh3    !intermediate variables
+integer :: maxiter
+real :: Qj      !intermediate flow estimate
+
+real :: x !Muskingum x: weighting factor
+real :: km !Muskingum k: travel time  
+
+
+
+!*******************************************************************************
+!Get local sizes for vectors
+!*******************************************************************************
+call VecGetLocalSize(ZV_QoutR,IS_localsize,ierr)
+
+
+!*******************************************************************************
+!Set mean values to zero initialize QoutprevR with QoutinitR
+!*******************************************************************************
+call VecSet(ZV_QoutbarR,0*ZS_one,ierr)                     !Qoutbar=0 
+!set the means to zero at beginning of iterations over routing time step
+
+call VecCopy(ZV_QoutinitR,ZV_QoutprevR,ierr)               !QoutprevR=QoutinitR
+!set the previous value to the initial value given as input to subroutine
+
+
+!*******************************************************************************
+!Temporal loop 
+!*******************************************************************************
+call VecGetArrayF90(ZV_C1,ZV_C1_p,ierr)
+call VecGetArrayF90(ZV_C2,ZV_C2_p,ierr)
+call VecGetArrayF90(ZV_C3,ZV_C3_p,ierr)
+call VecGetArrayF90(ZV_Qext,ZV_Qext_p,ierr)
+
+do JS_R=1,IS_R
+!-------------------------------------------------------------------------------
+!Update mean
+!-------------------------------------------------------------------------------
+call VecAXPY(ZV_QoutbarR,ZS_one/IS_R,ZV_QoutprevR,ierr) 
+!Qoutbar=Qoutbar+Qoutprev/IS_R
+
+!-------------------------------------------------------------------------------
+!Calculation of the right hand size, b
+!-------------------------------------------------------------------------------
+call MatMult(ZM_Net,ZV_QoutprevR,ZV_b,ierr)                !b2=Net*Qoutprev
+!lpr note: ZV_b = quc, the inflow coming from upstream
+
+call VecGetArrayF90(ZV_b,ZV_b_p,ierr)
+call VecGetArrayF90(ZV_QoutprevR,ZV_QoutprevR_p,ierr)
+
+do JS_localsize=1,IS_localsize
+     ZV_b_p(JS_localsize)=ZV_b_p(JS_localsize)*ZV_C2_p(JS_localsize)           &
+                         +(ZV_C1_p(JS_localsize)+ZV_C2_p(JS_localsize))        &
+                         *ZV_Qext_p(JS_localsize)                              &
+                         +ZV_C3_p(JS_localsize)*ZV_QoutprevR_p(JS_localsize)
+end do
+
+call VecRestoreArrayF90(ZV_QoutprevR,ZV_QoutprevR_p,ierr)
+call VecRestoreArrayF90(ZV_b,ZV_b_p,ierr)
+
+
+
+
+
+!-------------------------------------------------------------------------------
+!Routing with PETSc using a matrix method
+!-------------------------------------------------------------------------------
+if (IS_opt_routing==1) then
+
+call KSPSolve(ksp,ZV_b,ZV_QoutR,ierr)                      !solves A*Qout=b
+call KSPGetIterationNumber(ksp,IS_ksp_iter,ierr)
+if (IS_ksp_iter>IS_ksp_iter_max) IS_ksp_iter_max=IS_ksp_iter
+
+end if
+
+!-------------------------------------------------------------------------------
+!Routing with Fortran using the traditional Muskingum method
+!-------------------------------------------------------------------------------
+if (IS_opt_routing==2) then
+
+call VecGetArrayF90(ZV_QoutR,ZV_QoutR_p,ierr)
+call VecGetArrayF90(ZV_QoutprevR,ZV_QoutprevR_p,ierr)
+call VecGetArrayF90(ZV_b,ZV_b_p,ierr)
+
+do JS_riv_bas=1,IS_riv_bas
+     ZV_QoutR_p(JS_riv_bas)=ZV_b_p(JS_riv_bas)                                 &
+                            +sum(ZV_C1_p(JS_riv_bas)                           &
+                                  *ZV_QoutR_p(IM_index_up(JS_riv_bas,1:        &
+                                   IV_nbup(IV_riv_index(JS_riv_bas))))) 
+end do
+!Taking into account the knowledge of how many upstream locations exist.
+!Similar to exact preallocation of network matrix
+
+call VecRestoreArrayF90(ZV_QoutR,ZV_QoutR_p,ierr)
+call VecRestoreArrayF90(ZV_QoutprevR,ZV_QoutprevR_p,ierr)
+call VecRestoreArrayF90(ZV_b,ZV_b_p,ierr)
+end if
+
+
+
+
+
+
+!-------------------------------------------------------------------------------
+!Routing with Fortran using the Muskingum-Cunge method
+!Author: Peirong Lin, April 2017
+!lpr
+!-------------------------------------------------------------------------------
+if (IS_opt_routing==4) then
+print *,' ****** RAPID routing using Muskingum-Cunge Method ******'
+print *,' ********* variable flow velocity as a function of Q ****'
+
+!---reading static input dataset: channel parameters----
+nriv = 16906
+open(40,file=f_params,status='old')
+do iriv=1,nriv
+        read(40,*) comid(iriv),bw(iriv),ss(iriv),bs(iriv),ll(iriv),&
+                nchan(iriv),hinit(iriv)
+        !print *,comid(iriv)
+end do
+print *,'       read channel parameter successful '
+
+
+call VecCopy(ZV_Qext,mc_ql,ierr)
+call VecCopy(ZV_b,mc_quc,ierr)
+!---side slope
+call VecSetValues(ZV_ss,IS_riv_bas,IV_riv_loc1,ss(IV_riv_index), &
+                INSERT_VALUES,ierr)
+call VecAssemblyBegin(ZV_ss,ierr)
+call VecAssemblyEnd(ZV_ss,ierr)
+!----bottom width
+call VecSetValues(ZV_bw,IS_riv_bas,IV_riv_loc1,bw(IV_riv_index), &
+                INSERT_VALUES,ierr)
+call VecAssemblyBegin(ZV_bw,ierr)
+call VecAssemblyEnd(ZV_bw,ierr)
+!----length
+call VecSetValues(ZV_ll,IS_riv_bas,IV_riv_loc1,ll(IV_riv_index), &
+                INSERT_VALUES,ierr)
+call VecAssemblyBegin(ZV_ll,ierr)
+call VecAssemblyEnd(ZV_ll,ierr)
+!----roughness
+call VecSetValues(ZV_nchan,IS_riv_bas,IV_riv_loc1,nchan(IV_riv_index), &
+                INSERT_VALUES,ierr)
+call VecAssemblyBegin(ZV_nchan,ierr)
+call VecAssemblyEnd(ZV_nchan,ierr)
+!----initial depth
+call VecSetValues(ZV_hinit,IS_riv_bas,IV_riv_loc1,hinit(IV_riv_index), &
+                INSERT_VALUES,ierr)
+call VecAssemblyBegin(ZV_hinit,ierr)
+call VecAssemblyEnd(ZV_hinit,ierr)
+
+
+!---calculate middle variables---
+call VecPointwiseDivide(ZV_z,ZS_one,ZV_ss) !z = 1./ss
+!---calculate h--
+call VecCopy(ZV_hinit,ZV_h,ierr) !not using D.G.'s initial: h = sqrt(mc_Qlateral*)*0.1
+!--lpr: calculate Ck, C1, C2, C3, and q
+call VecWAXPY(ZV_qp, ZS_one, mc_ql,mc_quc) !qp=ZV_b+ZS_Qext
+
+call VecSet(ZV_Tw,0*ZS_one,ierr)        !initialize Tw=0
+call VecSet(ZV_Ck,0*ZS_one,ierr)        !initialize Ck=0
+call VecSet(ZV_x,0*ZS_one,ierr)        !initialize x=0
+call VecSet(ZV_Km,0*ZS_one,ierr)        !initialize Km=0
+
+
+mc_error = 1.0
+maxiter = 0
+call VecGetArrayF90(mc_quc,mc_quc_p,ierr)
+call VecGetArrayF90(mc_ql,mc_ql_p,ierr)
+call VecGetArrayF90(ZV_bw,ZV_bw_p,ierr)
+call VecGetArrayF90(ZV_z,ZV_z_p,ierr)
+call VecGetArrayF90(ZV_h,ZV_h_p,ierr)
+call VecGetArrayF90(ZV_nchan,ZV_nchan_p,ierr)
+call VecGetArrayF90(ZV_bs,ZV_bs_p,ierr)
+
+call VecGetArrayF90(ZV_Tw,ZV_Tw_p,ierr)
+call VecGetArrayF90(ZV_Ck,ZV_Ck_p,ierr)
+call VecGetArrayF90(ZV_x,ZV_x_p,ierr)
+call VecGetArrayF90(ZV_Km,ZV_Km_p,ierr)
+
+call VecGetArrayF90(ZV_qp,ZV_qp_p,ierr)
+call VecGetArrayF90(ZV_ll,ZV_ll_p,ierr)
+!---need to check
+do JS_localsize=1,IS_localsize
+!find a depth (h) which makes the Qi=quc (error<0.01)
+if(mc_quc_p(JS_localsize).gt.0) then
+    do while (mc_error.gt.0.01.and.maxiter<100)
+        maxiter=maxiter+1
+        !---trapezoidal channel shape function
+        shapefn=SHAPE1(real(ZV_bw_p(JS_localsize)),real(ZV_z_p(JS_localsize)),&
+                real(ZV_h_p(JS_localsize)))
+        Qj=FLOW(real(ZV_nchan_p(JS_localsize)),real(ZV_bs_p(JS_localsize)),&
+                real(ZV_bw_p(JS_localsize)),real(ZV_h_p(JS_localsize)),&
+                real(ZV_z_p(JS_localsize)))     
+        print *,'****LPR CHECK: Qj = ',Qj
+        ZV_h_p(JS_localsize)=ZV_h_p(JS_localsize)-(1-mc_quc_p(JS_localsize)/Qj)/shapefn
+        mc_error=abs((Qj-mc_quc_p(JS_localsize))/mc_quc_p(JS_localsize))   !update
+    end do
+end if
+
+!calculate Muskingum variables and flow velocity--
+maxiter=0
+if(mc_ql_p(JS_localsize).eq.0 .and. mc_quc_p(JS_localsize).eq.0) then
+        Qj=0.0
+else
+        mc_error=1.0 !-reset the error
+        ZV_Tw_p(JS_localsize)=ZV_bw_p(JS_localsize)+&
+                2*ZV_z_p(JS_localsize)*ZV_h_p(JS_localsize)
+        !--calculate wave celerity, following WRF-Hydro, pg 287 Chow, Mdt, Mays
+        ZV_Ck_p(JS_localsize)=(sqrt(ZV_bs_p(JS_localsize)/ZV_nchan_p(JS_localsize)))*&
+                (5./3.)*ZV_h_p(JS_localsize)**0.667
+        ZV_x_p(JS_localsize)=0.5-(ZV_qp_p(JS_localsize)/(2*ZV_Tw_p(JS_localsize)*&
+                ZV_bs_p(JS_localsize)*ZV_Ck_p(JS_localsize)*ZV_ll_p(JS_localsize)))
+        if(ZV_x_p(JS_localsize).le.0) then
+                print *, '---- lpr ERROR: Muskingum x is less than 0!!! ---'
+                stop
+        end if
+end if
+end do
+
+
+
+
+
+
+end if
+!-----end of Muskingum-Cunge---Peirong Lin---------
+
+
+
+
+
+
+
+
+
+
+!-------------------------------------------------------------------------------
+!Routing with PETSc using a matrix method with transboundary matrix
+!-------------------------------------------------------------------------------
+if (IS_opt_routing==3) then
+
+call KSPSolve(ksp,ZV_b,ZV_QoutRhat,ierr)                     !solves A*Qouthat=b
+call KSPGetIterationNumber(ksp,IS_ksp_iter,ierr)
+if (IS_ksp_iter>IS_ksp_iter_max) IS_ksp_iter_max=IS_ksp_iter
+
+call MatMult(ZM_TC1,ZV_QoutRhat,ZV_bhat,ierr)
+call VecAYPX(ZV_bhat,ZS_one,ZV_b,ierr)
+
+call KSPSolve(ksp,ZV_bhat,ZV_QoutR,ierr)                     !solves A*Qout=bhat
+call KSPGetIterationNumber(ksp,IS_ksp_iter,ierr)
+if (IS_ksp_iter>IS_ksp_iter_max) IS_ksp_iter_max=IS_ksp_iter
+
+end if
+
+
+!-------------------------------------------------------------------------------
+!Calculation of babsmax, QoutRabsmin and QoutRabsmax
+!-------------------------------------------------------------------------------
+if (BS_opt_influence) then
+
+call VecGetArrayF90(ZV_b,ZV_b_p,ierr)
+call VecGetArrayF90(ZV_babsmax,ZV_babsmax_p,ierr)
+do JS_localsize=1,IS_localsize
+     if (ZV_babsmax_p(JS_localsize)<=abs(ZV_b_p(JS_localsize))) then
+         ZV_babsmax_p(JS_localsize) =abs(ZV_b_p(JS_localsize))
+     end if
+end do
+call VecRestoreArrayF90(ZV_b,ZV_b_p,ierr)
+call VecRestoreArrayF90(ZV_babsmax,ZV_babsmax_p,ierr)
+
+call VecGetArrayF90(ZV_QoutR,ZV_QoutR_p,ierr)
+call VecGetArrayF90(ZV_QoutRabsmin,ZV_QoutRabsmin_p,ierr)
+call VecGetArrayF90(ZV_QoutRabsmax,ZV_QoutRabsmax_p,ierr)
+do JS_localsize=1,IS_localsize
+     if (ZV_QoutRabsmin_p(JS_localsize)>=abs(ZV_QoutR_p(JS_localsize))) then
+         ZV_QoutRabsmin_p(JS_localsize) =abs(ZV_QoutR_p(JS_localsize))
+     end if
+     if (ZV_QoutRabsmax_p(JS_localsize)<=abs(ZV_QoutR_p(JS_localsize))) then
+         ZV_QoutRabsmax_p(JS_localsize) =abs(ZV_QoutR_p(JS_localsize))
+     end if
+end do
+call VecRestoreArrayF90(ZV_QoutR,ZV_QoutR_p,ierr)
+call VecRestoreArrayF90(ZV_QoutRabsmin,ZV_QoutRabsmin_p,ierr)
+call VecRestoreArrayF90(ZV_QoutRabsmax,ZV_QoutRabsmax_p,ierr)
+
+end if
+
+
+!-------------------------------------------------------------------------------
+!Reset previous
+!-------------------------------------------------------------------------------
+call VecCopy(ZV_QoutR,ZV_QoutprevR,ierr)              !Qoutprev=Qout
+!call VecCopy(ZV_VR,ZV_VprevR,ierr)                    !Vprev=V
+
+
+
+!-------------------------------------------------------------------------------
+!End temporal loop
+!-------------------------------------------------------------------------------
+end do
+
+call VecRestoreArrayF90(ZV_C1,ZV_C1_p,ierr)
+call VecRestoreArrayF90(ZV_C2,ZV_C2_p,ierr)
+call VecRestoreArrayF90(ZV_C3,ZV_C3_p,ierr)
+call VecRestoreArrayF90(ZV_Qext,ZV_Qext_p,ierr)
+
+
+!*******************************************************************************
+!End
+!*******************************************************************************
+end subroutine rapid_routing

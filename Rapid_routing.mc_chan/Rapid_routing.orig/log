@@ -1,0 +1,75 @@
+/opt/apps/intel11_1/mvapich2/1.6/bin/mpif90 -fPIC    -D NO_TAO -c rapid_var.F90 -I/opt/apps/intel11_1/mvapich2_1_6/petsc/3.4/include -I/opt/apps/intel11_1/mvapich2_1_6/petsc/3.4/westmere/include -I/opt/apps/intel11_1/mvapich2_1_6/phdf5/1.8.8/include -I/opt/apps/intel11_1/mvapich2/1.6/include  
+/opt/apps/intel11_1/mvapich2/1.6/bin/mpif90 -fPIC    -D NO_TAO -c hrldas_RAPID_wrapper.F90  -I/opt/apps/intel11_1/mvapich2_1_6/petsc/3.4/include -I/opt/apps/intel11_1/mvapich2_1_6/petsc/3.4/westmere/include -I/opt/apps/intel11_1/mvapich2_1_6/phdf5/1.8.8/include -I/opt/apps/intel11_1/mvapich2/1.6/include 
+/opt/apps/intel11_1/mvapich2/1.6/bin/mpif90 -fPIC    -D NO_TAO -c rapid_main.F90 -I/opt/apps/intel11_1/mvapich2_1_6/petsc/3.4/include -I/opt/apps/intel11_1/mvapich2_1_6/petsc/3.4/westmere/include -I/opt/apps/intel11_1/mvapich2_1_6/phdf5/1.8.8/include -I/opt/apps/intel11_1/mvapich2/1.6/include \
+						 -I /opt/apps/intel11_1/netcdf/3.6.3/include
+/opt/apps/intel11_1/mvapich2/1.6/bin/mpif90 -fPIC    -D NO_TAO -c rapid_read_namelist.F90
+/opt/apps/intel11_1/mvapich2/1.6/bin/mpif90 -fPIC    -D NO_TAO -c rapid_init.F90 -I/opt/apps/intel11_1/mvapich2_1_6/petsc/3.4/include -I/opt/apps/intel11_1/mvapich2_1_6/petsc/3.4/westmere/include -I/opt/apps/intel11_1/mvapich2_1_6/phdf5/1.8.8/include -I/opt/apps/intel11_1/mvapich2/1.6/include
+/opt/apps/intel11_1/mvapich2/1.6/bin/mpif90 -fPIC    -D NO_TAO -c rapid_arrays.F90 -I/opt/apps/intel11_1/mvapich2_1_6/petsc/3.4/include -I/opt/apps/intel11_1/mvapich2_1_6/petsc/3.4/westmere/include -I/opt/apps/intel11_1/mvapich2_1_6/phdf5/1.8.8/include -I/opt/apps/intel11_1/mvapich2/1.6/include
+/opt/apps/intel11_1/mvapich2/1.6/bin/mpif90 -fPIC    -D NO_TAO -c rapid_create_obj.F90 -I/opt/apps/intel11_1/mvapich2_1_6/petsc/3.4/include -I/opt/apps/intel11_1/mvapich2_1_6/petsc/3.4/westmere/include -I/opt/apps/intel11_1/mvapich2_1_6/phdf5/1.8.8/include -I/opt/apps/intel11_1/mvapich2/1.6/include 
+/opt/apps/intel11_1/mvapich2/1.6/bin/mpif90 -fPIC    -D NO_TAO -c rapid_create_Qout_file.F90 -I /opt/apps/intel11_1/netcdf/3.6.3/include
+/opt/apps/intel11_1/mvapich2/1.6/bin/mpif90 -fPIC    -D NO_TAO -c rapid_open_Qout_file.F90 -I /opt/apps/intel11_1/netcdf/3.6.3/include
+/opt/apps/intel11_1/mvapich2/1.6/bin/mpif90 -fPIC    -D NO_TAO -c rapid_open_Vlat_file.F90 -I /opt/apps/intel11_1/netcdf/3.6.3/include
+/opt/apps/intel11_1/mvapich2/1.6/bin/mpif90 -fPIC    -D NO_TAO -c rapid_open_Qobs_file.F90 
+/opt/apps/intel11_1/mvapich2/1.6/bin/mpif90 -fPIC    -D NO_TAO -c rapid_open_Qfor_file.F90 
+/opt/apps/intel11_1/mvapich2/1.6/bin/mpif90 -fPIC    -D NO_TAO -c rapid_open_Qhum_file.F90 
+/opt/apps/intel11_1/mvapich2/1.6/bin/mpif90 -fPIC    -D NO_TAO -c rapid_write_Qout_file.F90 -I/opt/apps/intel11_1/mvapich2_1_6/petsc/3.4/include -I/opt/apps/intel11_1/mvapich2_1_6/petsc/3.4/westmere/include -I/opt/apps/intel11_1/mvapich2_1_6/phdf5/1.8.8/include -I/opt/apps/intel11_1/mvapich2/1.6/include -I /opt/apps/intel11_1/netcdf/3.6.3/include
+/opt/apps/intel11_1/mvapich2/1.6/bin/mpif90 -fPIC    -D NO_TAO -c rapid_read_Vlat_file.F90 -I/opt/apps/intel11_1/mvapich2_1_6/petsc/3.4/include -I/opt/apps/intel11_1/mvapich2_1_6/petsc/3.4/westmere/include -I/opt/apps/intel11_1/mvapich2_1_6/phdf5/1.8.8/include -I/opt/apps/intel11_1/mvapich2/1.6/include -I /opt/apps/intel11_1/netcdf/3.6.3/include
+/opt/apps/intel11_1/mvapich2/1.6/bin/mpif90 -fPIC    -D NO_TAO -c rapid_read_Qobs_file.F90 -I/opt/apps/intel11_1/mvapich2_1_6/petsc/3.4/include -I/opt/apps/intel11_1/mvapich2_1_6/petsc/3.4/westmere/include -I/opt/apps/intel11_1/mvapich2_1_6/phdf5/1.8.8/include -I/opt/apps/intel11_1/mvapich2/1.6/include
+/opt/apps/intel11_1/mvapich2/1.6/bin/mpif90 -fPIC    -D NO_TAO -c rapid_read_Qfor_file.F90 -I/opt/apps/intel11_1/mvapich2_1_6/petsc/3.4/include -I/opt/apps/intel11_1/mvapich2_1_6/petsc/3.4/westmere/include -I/opt/apps/intel11_1/mvapich2_1_6/phdf5/1.8.8/include -I/opt/apps/intel11_1/mvapich2/1.6/include
+/opt/apps/intel11_1/mvapich2/1.6/bin/mpif90 -fPIC    -D NO_TAO -c rapid_read_Qhum_file.F90 -I/opt/apps/intel11_1/mvapich2_1_6/petsc/3.4/include -I/opt/apps/intel11_1/mvapich2_1_6/petsc/3.4/westmere/include -I/opt/apps/intel11_1/mvapich2_1_6/phdf5/1.8.8/include -I/opt/apps/intel11_1/mvapich2/1.6/include
+/opt/apps/intel11_1/mvapich2/1.6/bin/mpif90 -fPIC    -D NO_TAO -c rapid_close_Qout_file.F90 -I /opt/apps/intel11_1/netcdf/3.6.3/include 
+/opt/apps/intel11_1/mvapich2/1.6/bin/mpif90 -fPIC    -D NO_TAO -c rapid_close_Vlat_file.F90 -I /opt/apps/intel11_1/netcdf/3.6.3/include 
+/opt/apps/intel11_1/mvapich2/1.6/bin/mpif90 -fPIC    -D NO_TAO -c rapid_close_Qobs_file.F90
+/opt/apps/intel11_1/mvapich2/1.6/bin/mpif90 -fPIC    -D NO_TAO -c rapid_close_Qfor_file.F90
+/opt/apps/intel11_1/mvapich2/1.6/bin/mpif90 -fPIC    -D NO_TAO -c rapid_close_Qhum_file.F90
+/opt/apps/intel11_1/mvapich2/1.6/bin/mpif90 -fPIC    -D NO_TAO -c rapid_get_Qdam.F90 -I/opt/apps/intel11_1/mvapich2_1_6/petsc/3.4/include -I/opt/apps/intel11_1/mvapich2_1_6/petsc/3.4/westmere/include -I/opt/apps/intel11_1/mvapich2_1_6/phdf5/1.8.8/include -I/opt/apps/intel11_1/mvapich2/1.6/include
+/opt/apps/intel11_1/mvapich2/1.6/bin/mpif90 -fPIC    -D NO_TAO -c rapid_set_Qext0.F90 -I/opt/apps/intel11_1/mvapich2_1_6/petsc/3.4/include -I/opt/apps/intel11_1/mvapich2_1_6/petsc/3.4/westmere/include -I/opt/apps/intel11_1/mvapich2_1_6/phdf5/1.8.8/include -I/opt/apps/intel11_1/mvapich2/1.6/include
+/opt/apps/intel11_1/mvapich2/1.6/bin/mpif90 -fPIC    -D NO_TAO -c rapid_hsh_mat.F90 -I/opt/apps/intel11_1/mvapich2_1_6/petsc/3.4/include -I/opt/apps/intel11_1/mvapich2_1_6/petsc/3.4/westmere/include -I/opt/apps/intel11_1/mvapich2_1_6/phdf5/1.8.8/include -I/opt/apps/intel11_1/mvapich2/1.6/include
+/opt/apps/intel11_1/mvapich2/1.6/bin/mpif90 -fPIC    -D NO_TAO -c rapid_net_mat.F90 -I/opt/apps/intel11_1/mvapich2_1_6/petsc/3.4/include -I/opt/apps/intel11_1/mvapich2_1_6/petsc/3.4/westmere/include -I/opt/apps/intel11_1/mvapich2_1_6/phdf5/1.8.8/include -I/opt/apps/intel11_1/mvapich2/1.6/include
+/opt/apps/intel11_1/mvapich2/1.6/bin/mpif90 -fPIC    -D NO_TAO -c rapid_net_mat_brk.F90 -I/opt/apps/intel11_1/mvapich2_1_6/petsc/3.4/include -I/opt/apps/intel11_1/mvapich2_1_6/petsc/3.4/westmere/include -I/opt/apps/intel11_1/mvapich2_1_6/phdf5/1.8.8/include -I/opt/apps/intel11_1/mvapich2/1.6/include
+/opt/apps/intel11_1/mvapich2/1.6/bin/mpif90 -fPIC    -D NO_TAO -c rapid_obs_mat.F90 -I/opt/apps/intel11_1/mvapich2_1_6/petsc/3.4/include -I/opt/apps/intel11_1/mvapich2_1_6/petsc/3.4/westmere/include -I/opt/apps/intel11_1/mvapich2_1_6/phdf5/1.8.8/include -I/opt/apps/intel11_1/mvapich2/1.6/include
+/opt/apps/intel11_1/mvapich2/1.6/bin/mpif90 -fPIC    -D NO_TAO -c rapid_routing.F90 -I/opt/apps/intel11_1/mvapich2_1_6/petsc/3.4/include -I/opt/apps/intel11_1/mvapich2_1_6/petsc/3.4/westmere/include -I/opt/apps/intel11_1/mvapich2_1_6/phdf5/1.8.8/include -I/opt/apps/intel11_1/mvapich2/1.6/include -I /opt/apps/intel11_1/netcdf/3.6.3/include
+/opt/apps/intel11_1/mvapich2/1.6/bin/mpif90 -fPIC    -D NO_TAO -c rapid_routing_param.F90 -I/opt/apps/intel11_1/mvapich2_1_6/petsc/3.4/include -I/opt/apps/intel11_1/mvapich2_1_6/petsc/3.4/westmere/include -I/opt/apps/intel11_1/mvapich2_1_6/phdf5/1.8.8/include -I/opt/apps/intel11_1/mvapich2/1.6/include
+/opt/apps/intel11_1/mvapich2/1.6/bin/mpif90 -fPIC    -D NO_TAO -c rapid_phiroutine.F90 -I/opt/apps/intel11_1/mvapich2_1_6/petsc/3.4/include -I/opt/apps/intel11_1/mvapich2_1_6/petsc/3.4/westmere/include -I/opt/apps/intel11_1/mvapich2_1_6/phdf5/1.8.8/include -I/opt/apps/intel11_1/mvapich2/1.6/include  
+/opt/apps/intel11_1/mvapich2/1.6/bin/mpif90 -fPIC    -D NO_TAO -c rapid_destro_obj.F90 -I/opt/apps/intel11_1/mvapich2_1_6/petsc/3.4/include -I/opt/apps/intel11_1/mvapich2_1_6/petsc/3.4/westmere/include -I/opt/apps/intel11_1/mvapich2_1_6/phdf5/1.8.8/include -I/opt/apps/intel11_1/mvapich2/1.6/include 
+/opt/apps/intel11_1/mvapich2/1.6/bin/mpif90 -fPIC    -D NO_TAO -c rapid_final.F90 -I/opt/apps/intel11_1/mvapich2_1_6/petsc/3.4/include -I/opt/apps/intel11_1/mvapich2_1_6/petsc/3.4/westmere/include -I/opt/apps/intel11_1/mvapich2_1_6/phdf5/1.8.8/include -I/opt/apps/intel11_1/mvapich2/1.6/include
+/opt/apps/intel11_1/mvapich2/1.6/bin/mpif90 -fPIC    -D NO_TAO -c hrldas_RAPID_drv.F90   
+/opt/apps/intel11_1/mvapich2/1.6/bin/mpif90 -fPIC    -D NO_TAO -o \
+	rapid \
+	rapid_main.o \
+	rapid_init.o \
+	rapid_read_namelist.o \
+	rapid_arrays.o \
+	rapid_create_obj.o \
+	rapid_create_Qout_file.o \
+	rapid_open_Qout_file.o \
+	rapid_open_Vlat_file.o \
+	rapid_open_Qobs_file.o \
+	rapid_open_Qfor_file.o \
+	rapid_open_Qhum_file.o \
+	rapid_write_Qout_file.o \
+	rapid_read_Vlat_file.o \
+	rapid_read_Qobs_file.o \
+	rapid_read_Qfor_file.o \
+	rapid_read_Qhum_file.o \
+	rapid_close_Qout_file.o \
+	rapid_close_Vlat_file.o \
+	rapid_close_Qobs_file.o \
+	rapid_close_Qfor_file.o \
+	rapid_close_Qhum_file.o \
+	rapid_get_Qdam.o \
+	rapid_set_Qext0.o \
+	rapid_hsh_mat.o \
+	rapid_net_mat.o \
+	rapid_net_mat_brk.o \
+	rapid_routing.o \
+	rapid_routing_param.o \
+	rapid_obs_mat.o \
+	rapid_phiroutine.o \
+	rapid_destro_obj.o \
+	rapid_final.o \
+	rapid_var.o \
+	hrldas_RAPID_wrapper.o \
+	hrldas_RAPID_drv.o \
+	  -Wl,-rpath,/opt/apps/intel11_1/mvapich2_1_6/petsc/3.4//westmere/lib -L/opt/apps/intel11_1/mvapich2_1_6/petsc/3.4/westmere/lib  -lpetsc -Wl,-rpath,/opt/apps/intel11_1/mvapich2_1_6/petsc/3.4/westmere/lib -lspai -lsuperlu_dist_3.3 -lcmumps -ldmumps -lsmumps -lzmumps -lmumps_common -lpord -lscalapack -lHYPRE -Wl,-rpath,/opt/apps/limic2/0.5.4/lib -L/opt/apps/limic2/0.5.4/lib -Wl,-rpath,/opt/ofed/lib64 -L/opt/ofed/lib64 -Wl,-rpath,/opt/apps/intel11_1/mvapich2/1.6/lib -L/opt/apps/intel11_1/mvapich2/1.6/lib -Wl,-rpath,/opt/apps/intel/11.1/lib/intel64 -L/opt/apps/intel/11.1/lib/intel64 -Wl,-rpath,/usr/lib/gcc/x86_64-redhat-linux/4.1.2 -L/usr/lib/gcc/x86_64-redhat-linux/4.1.2 -lmpichcxx -lstdc++ -lsuperlu_4.3 -Wl,-rpath,/opt/apps/intel/11.1/mkl/lib/em64t -L/opt/apps/intel/11.1/mkl/lib/em64t -lmkl_intel_lp64 -lmkl_sequential -lmkl_core -lpthread -lm -lparmetis -lmetis -lpthread -lchaco -Wl,-rpath,/opt/apps/intel11_1/mvapich2_1_6/phdf5/1.8.8/lib -L/opt/apps/intel11_1/mvapich2_1_6/phdf5/1.8.8/lib -lhdf5_fortran -lhdf5_hl -lhdf5 -lmpichf90 -lifport -lifcore -lm -lm -lmpichcxx -lstdc++ -lmpichcxx -lstdc++ -limf -ldl -lmpich -lopa -llimic2 -lpthread -lrdmacm -libverbs -libumad -lrt -lsvml -lipgo -ldecimal -lgcc_s -lirc -lirc_s -ldl  -L /opt/apps/intel11_1/netcdf/3.6.3/lib -lnetcdf
+/bin/rm -f *.o *.mod 

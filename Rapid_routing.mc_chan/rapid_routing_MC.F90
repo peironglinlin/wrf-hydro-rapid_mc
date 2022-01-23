@@ -1,0 +1,368 @@
+!----------------------------------------------------------------
+!------Peirong Lin, April 2017 for Muskingum-Cunge RAPID--------
+!----------------------------------------------------------------
+module rapid_routing_MC
+
+IMPLICIT NONE
+
+CONTAINS
+
+
+!--- update MC routing params every time step----
+subroutine routing_params_MC(comid,bw,ss,bs,ll,nchan,hinit,&
+                ZV_Qext,ZV_QoutinitR, &
+                ZV_C1,ZV_C2,ZV_C3,MC_C4,ZM_A,ZV_k,ZV_x,&
+                ZV_QoutR,ZV_QoutbarR)
+use rapid_var, only : JS_riv_tot,IS_riv_tot, &
+                ZV_QoutprevR,IV_riv_loc1,IV_riv_index,&
+                JS_R,IS_R,ZS_dtR,ierr,ZV_one,ZS_one,&
+                ZM_Net,ZV_b,JS_riv_bas,IM_index_up,IS_riv_bas,&
+                BS_opt_influence,IV_nbup,&
+                ZV_babsmax,ZV_bhat,ZV_QoutRabsmin,ZV_QoutRabsmax,&
+                ZV_b,ZV_babsmax,ZV_bhat,ksp,rank
+
+
+implicit none
+
+#include "finclude/petscsys.h"
+#include "finclude/petscvec.h"
+#include "finclude/petscvec.h90"
+#include "finclude/petscmat.h"
+#include "finclude/petscksp.h"
+#include "finclude/petscpc.h"
+#include "finclude/petscviewer.h"
+#include "finclude/petsclog.h"
+
+!---variables in/out--
+integer, dimension(IS_riv_tot),intent(in) :: comid
+real, dimension(IS_riv_tot),intent(in) :: bw,ss,bs,ll,nchan,hinit
+Vec,intent(in) :: ZV_Qext,ZV_QoutinitR
+Vec,intent(inout) :: ZV_C1,ZV_C2,ZV_C3,MC_C4,ZM_A,ZV_k,ZV_x
+!---variables for calc. in this subroutine------------
+Vec,intent(out) :: ZV_QoutR,ZV_QoutbarR
+PetscInt :: IS_localsize,JS_localsize
+PetscScalar, pointer :: ZV_QoutR_p(:),ZV_QoutprevR_p(:),ZV_QoutinitR_p(:),     &
+                        ZV_QoutbarR_p(:),ZV_Qext_p(:),ZV_C1_p(:),ZV_C2_p(:),   &
+                        ZV_C3_p(:),ZV_b_p(:),MC_C4_p(:),                       &
+                        ZV_babsmax_p(:),ZV_QoutRabsmin_p(:),ZV_QoutRabsmax_p(:)
+real :: shapefn,Qj,error        !intermediate variables
+integer :: maxiter              !intermediate variables
+real, dimension(IS_riv_tot) :: z,h   !intermediate: can output later
+real, dimension(IS_riv_tot) :: Tw,Ck   !intermediate: can output later
+PetscScalar,dimension(:), allocatable :: Km,x,C1,C2,C3,C4
+real :: D, D1
+real :: area_t,wp_t,hr_t  !hr: hydraulic radius
+real, dimension(IS_riv_tot) :: ZV_qp
+PetscScalar, pointer :: ZV_qp_p(:)
+
+allocate(Km(IS_riv_tot))
+allocate(x(IS_riv_tot))
+allocate(C1(IS_riv_tot))
+allocate(C2(IS_riv_tot))
+allocate(C3(IS_riv_tot))
+allocate(C4(IS_riv_tot))
+
+
+print *,'----- Updating MC routing_params ----------'
+call VecGetLocalSize(ZV_Qext,IS_localsize,ierr)
+call VecSet(ZV_QoutbarR,0*ZS_one,ierr)     !Qoutbar=0	;segment fault when use 0*ZS_one
+call VecCopy(ZV_QoutinitR,ZV_QoutprevR,ierr)               !QoutprevR=QoutinitR
+call VecGetArrayF90(ZV_Qext,ZV_Qext_p,ierr)
+call VecGetArrayF90(ZV_QoutprevR,ZV_QoutprevR_p,ierr)
+
+
+
+
+
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+do JS_localsize = 1,IS_localsize
+if(JS_localsize.eq.1026) then
+print *,'----- Processing COMID = ',comid(JS_localsize),' -----'
+end if
+ZV_qp(JS_localsize) = ZV_QoutprevR_p(JS_localsize)+ZV_Qext_p(JS_localsize)
+z(JS_localsize) = 1./ss(JS_localsize)
+!h(JS_localsize) = hinit(JS_localsize)
+h(JS_localsize) = sqrt(ZV_qp(JS_localsize))*0.1 !initial guess of h
+
+if(JS_localsize.eq.1026) then
+print *,'	--- MC params: bw = ',bw(1026),' m; ss=',ss(1026)
+print *,'	****LPR CHECK: h =',h(1026), 'm '
+end if
+
+error = 1.0  !find a depth (h) which makes the Qi=quc (error<0.01)
+maxiter = 0
+do while (error.gt.0.01.and.maxiter<100)
+        maxiter=maxiter+1
+        !---trapezoidal channel shape function
+        shapefn=SHAPE1(bw(JS_localsize),z(JS_localsize),h(JS_localsize))
+        Qj=FLOW(nchan(JS_localsize),bs(JS_localsize),&
+                bw(JS_localsize),h(JS_localsize),z(JS_localsize))
+        !print *,'****LPR CHECK: Qj = ',Qj
+        h(JS_localsize)=h(JS_localsize)-(1-ZV_QoutprevR_p(JS_localsize)/Qj)/shapefn
+        error=abs((Qj-ZV_QoutprevR_p(JS_localsize))/ZV_QoutprevR_p(JS_localsize))  !update
+end do
+
+       
+
+Tw(JS_localsize)=bw(JS_localsize)+2*z(JS_localsize)*h(JS_localsize)
+!--calculate wave celerity, following WRF-Hydro, pg 287 Chow, Mdt, Mays
+!Ck(JS_localsize)=sqrt(bs(JS_localsize))/nchan(JS_localsize)*&
+!        (5./3.)*h(JS_localsize)**0.667
+area_t=(bw(JS_localsize)+z(JS_localsize)*h(JS_localsize))*h(JS_localsize)
+wp_t=bw(JS_localsize)+2*h(JS_localsize)*sqrt(1+z(JS_localsize)**2)
+hr_t=area_t/wp_t   !hr contains the information from Q
+if(JS_localsize.eq.1026) then
+  print *,'     *** HYDRAULIC RADIUS hr=',hr_t
+end if
+Ck(JS_localsize)=sqrt(bs(JS_localsize))/nchan(JS_localsize)*&
+         (5./3.)*hr_t**0.667
+D1= ZV_qp(JS_localsize)/(2*Tw(JS_localsize)*bs(JS_localsize)) !pg295
+x(JS_localsize)=0.5-(D1/(Ck(JS_localsize)*ll(JS_localsize)))  !pg295
+
+
+!lpr: deal with erraneous places-----
+if(x(JS_localsize).le.0..or.isnan(x(JS_localsize))) then
+    x(JS_localsize)=0.3 !if <0, set to 0.3
+end if
+if(Ck(JS_localsize).eq.0. .or. isnan(Ck(JS_localsize))) then
+    Ck(JS_localsize) = 0.35*5./3.
+end if
+
+
+!---Muskingum k: need to check unit in second (D.G. used minutes?)
+Km(JS_localsize)=ll(JS_localsize)/Ck(JS_localsize)
+D = Km(JS_localsize)*(1-x(JS_localsize))+ZS_dtR/2
+C1(JS_localsize)=(-Km(JS_localsize)*x(JS_localsize)+ZS_dtR/2)/D
+C2(JS_localsize)=(ZS_dtR/2+Km(JS_localsize)*x(JS_localsize))/D
+C3(JS_localsize)=(Km(JS_localsize)*(1-x(JS_localsize))-ZS_dtR/2)/D
+C4(JS_localsize)=ZV_Qext_p(JS_localsize)*ZS_dtR/D 
+end do
+
+
+print *,'	****LPR CHECK: Ck = ',Ck(1026),' m/s'
+print *,'	****LPR CHECK: Km = ',Km(1026),'; *** X = ',x(1026)
+print *,'	*** C1 = ',C1(1026),'; C2=',C2(1026),' ; C3=',C3(1026),' ; C4=',C4(1026)
+print *, '----average celerity = ', real(sum(Ck)/size(Ck)), ' -----'
+
+
+
+
+
+if (rank==0) then
+call VecSetValues(ZV_C1,IS_riv_bas,IV_riv_loc1,&
+               C1(IV_riv_index),INSERT_VALUES,ierr)
+call VecAssemblyBegin(ZV_C1,ierr)
+call VecAssemblyEnd(ZV_C1,ierr)
+end if 
+
+if (rank==0) then
+call VecSetValues(ZV_C2,IS_riv_bas,IV_riv_loc1,&
+               C2(IV_riv_index),INSERT_VALUES,ierr)
+call VecAssemblyBegin(ZV_C2,ierr)
+call VecAssemblyEnd(ZV_C2,ierr)
+end if 
+
+if (rank==0) then
+call VecSetValues(ZV_C3,IS_riv_bas,IV_riv_loc1,&
+               C3(IV_riv_index),INSERT_VALUES,ierr)
+call VecAssemblyBegin(ZV_C3,ierr)
+call VecAssemblyEnd(ZV_C3,ierr)
+end if 
+
+if (rank==0) then
+call VecSetValues(MC_C4,IS_riv_bas,IV_riv_loc1,&
+               C4(IV_riv_index),INSERT_VALUES,ierr)
+call VecAssemblyBegin(MC_C4,ierr)
+call VecAssemblyEnd(MC_C4,ierr)
+end if 
+
+if (rank==0) then
+call VecSetValues(ZV_k,IS_riv_bas,IV_riv_loc1,&
+               Km(IV_riv_index),INSERT_VALUES,ierr)
+call VecAssemblyBegin(ZV_k,ierr)
+call VecAssemblyEnd(ZV_k,ierr)
+end if 
+
+if (rank==0) then
+call VecSetValues(ZV_x,IS_riv_bas,IV_riv_loc1,&
+               x(IV_riv_index),INSERT_VALUES,ierr)
+call VecAssemblyBegin(ZV_x,ierr)
+call VecAssemblyEnd(ZV_x,ierr)
+end if 
+
+!---after calculate C1, C2, C3, update A linear system matrix---
+call MatCopy(ZM_Net,ZM_A,DIFFERENT_NONZERO_PATTERN,ierr)   !A=Net
+call MatDiagonalScale(ZM_A,ZV_C1,ZV_one,ierr)              !A=diag(C1)*A
+call MatScale(ZM_A,-ZS_one,ierr)                           !A=-A
+call MatShift(ZM_A,ZS_one,ierr)                  
+!Result:A=I-diag(C1)*Net
+!---rapid_init.F90---- error: so comment out first (lpr)
+!call KSPSetOperators(ksp,ZV_A,ZV_A,DIFFERENT_NONZERO_PATTERN,ierr) 
+!call KSPSetType(ksp,KSPRICHARDSON,ierr) !default=richardson
+!call KSPSetInitialGuessKnoll(ksp,PETSC_TRUE,ierr)
+!call KSPSetFromOptions(ksp,ierr)
+print *,' ****** Muskingum-Cunge parameter UPDATED! ********'
+
+
+
+
+
+
+
+call VecGetArrayF90(ZV_C1,ZV_C1_p,ierr)
+call VecGetArrayF90(ZV_C2,ZV_C2_p,ierr)
+call VecGetArrayF90(ZV_C3,ZV_C3_p,ierr)
+call VecGetArrayF90(MC_C4,MC_C4_p,ierr)
+
+print *,'************* ROUTING STARTED!!! ******************'
+!print *,' *** C1 = ',ZV_C1_p(1026),'; C2=',ZV_C2_p(1026),' ; C3=',ZV_C3_p(1026)
+!time loop
+do JS_R=1,IS_R
+call VecAXPY(ZV_QoutbarR,ZS_one/IS_R,ZV_QoutprevR,ierr) 
+!ZV_QoutbarR = ZV_QoutbarR+ZV_QoutprevR/dt
+call VecGetArrayF90(ZV_QoutbarR,ZV_QoutbarR_p,ierr)
+print *,'-------ZV_QoutbarR = ',ZV_QoutbarR_p(1026)
+call MatMult(ZM_Net,ZV_QoutprevR,ZV_b,ierr)                !b2=Net*Qoutprev
+call VecGetArrayF90(ZV_b,ZV_b_p,ierr)
+call VecGetArrayF90(ZV_QoutprevR,ZV_QoutprevR_p,ierr)
+
+
+do JS_localsize=1,IS_localsize
+     ZV_b_p(JS_localsize)=ZV_b_p(JS_localsize)*ZV_C2_p(JS_localsize)           &
+                         +(ZV_C1_p(JS_localsize)+ZV_C2_p(JS_localsize))        &
+                         *ZV_Qext_p(JS_localsize)                              &
+                         +ZV_C3_p(JS_localsize)*ZV_QoutprevR_p(JS_localsize)                                            
+end do
+
+
+!call VecRestoreArrayF90(ZV_QoutprevR,ZV_QoutprevR_p,ierr)
+!call VecRestoreArrayF90(ZV_b,ZV_b_p,ierr)
+
+
+!if (IS_opt_routing==2) then
+call VecGetArrayF90(ZV_QoutR,ZV_QoutR_p,ierr)
+!call VecGetArrayF90(ZV_QoutprevR,ZV_QoutprevR_p,ierr)
+!call VecGetArrayF90(ZV_b,ZV_b_p,ierr)
+do JS_riv_bas=1,IS_riv_bas
+     ZV_QoutR_p(JS_riv_bas)=ZV_b_p(JS_riv_bas)                                 &
+                            +sum(ZV_C1_p(JS_riv_bas)                           &
+                                  *ZV_QoutR_p(IM_index_up(JS_riv_bas,1:        &
+                                   IV_nbup(IV_riv_index(JS_riv_bas))))) 
+end do
+!print *,'ZV_QoutR (Qout) = ',ZV_QoutR_p(1026)
+!Taking into account the knowledge of how many upstream locations exist.
+!Similar to exact preallocation of network matrix
+
+call VecRestoreArrayF90(ZV_QoutR,ZV_QoutR_p,ierr)
+call VecRestoreArrayF90(ZV_QoutprevR,ZV_QoutprevR_p,ierr)
+call VecRestoreArrayF90(ZV_b,ZV_b_p,ierr)
+!end if
+
+
+!-------------------------------------------------------------------------------
+!Calculation of babsmax, QoutRabsmin and QoutRabsmax
+!-------------------------------------------------------------------------------
+if (BS_opt_influence) then
+
+call VecGetArrayF90(ZV_b,ZV_b_p,ierr)
+call VecGetArrayF90(ZV_babsmax,ZV_babsmax_p,ierr)
+do JS_localsize=1,IS_localsize
+     if (ZV_babsmax_p(JS_localsize)<=abs(ZV_b_p(JS_localsize))) then
+         ZV_babsmax_p(JS_localsize) =abs(ZV_b_p(JS_localsize))
+     end if
+end do
+call VecRestoreArrayF90(ZV_b,ZV_b_p,ierr)
+call VecRestoreArrayF90(ZV_babsmax,ZV_babsmax_p,ierr)
+
+call VecGetArrayF90(ZV_QoutR,ZV_QoutR_p,ierr)
+call VecGetArrayF90(ZV_QoutRabsmin,ZV_QoutRabsmin_p,ierr)
+call VecGetArrayF90(ZV_QoutRabsmax,ZV_QoutRabsmax_p,ierr)
+do JS_localsize=1,IS_localsize
+     if (ZV_QoutRabsmin_p(JS_localsize)>=abs(ZV_QoutR_p(JS_localsize))) then
+         ZV_QoutRabsmin_p(JS_localsize) =abs(ZV_QoutR_p(JS_localsize))
+     end if
+     if (ZV_QoutRabsmax_p(JS_localsize)<=abs(ZV_QoutR_p(JS_localsize))) then
+         ZV_QoutRabsmax_p(JS_localsize) =abs(ZV_QoutR_p(JS_localsize))
+     end if
+end do
+call VecRestoreArrayF90(ZV_QoutR,ZV_QoutR_p,ierr)
+call VecRestoreArrayF90(ZV_QoutRabsmin,ZV_QoutRabsmin_p,ierr)
+call VecRestoreArrayF90(ZV_QoutRabsmax,ZV_QoutRabsmax_p,ierr)
+
+end if
+
+
+!-------------------------------------------------------------------------------
+!Reset previous
+!-------------------------------------------------------------------------------
+call VecCopy(ZV_QoutR,ZV_QoutprevR,ierr)              !Qoutprev=Qout
+!call VecCopy(ZV_VR,ZV_VprevR,ierr)                    !Vprev=V
+!print *,'	----- check point 88888 ----------'
+!-------------------------------------------------------------------------------
+!End temporal loop
+!-------------------------------------------------------------------------------
+end do
+
+call VecRestoreArrayF90(ZV_C1,ZV_C1_p,ierr)
+call VecRestoreArrayF90(ZV_C2,ZV_C2_p,ierr)
+call VecRestoreArrayF90(ZV_C3,ZV_C3_p,ierr)
+call VecRestoreArrayF90(ZV_Qext,ZV_Qext_p,ierr)
+!print *,'	----- check point 9 ----------'
+
+end subroutine routing_params_MC
+
+
+
+
+
+
+
+
+
+subroutine routing_MC
+end subroutine routing_MC
+
+
+
+
+
+
+
+REAL FUNCTION SHAPE1(bw,z,h)
+real :: bw,z,h
+real :: sh1,sh2,sh3
+        !---trapezoidal channel shape
+        sh1=(bw+2*z*h)*(5*bw+6*h*sqrt(1+z**2))
+        sh2=4*z*h**2*sqrt(1+z**2)
+        sh3=(3*h*(bw+z*h))*(bw+2*h*sqrt(1+z**2))
+        if(sh3.eq.0) then
+                SHAPE1=0.
+        else
+                SHAPE1=(sh1+sh2)/sh3
+        end if
+END FUNCTION SHAPE1
+
+
+!http://ocw.usu.edu/Biological_and_Irrigation_Engineering/
+!Irrigation___Conveyance_Control_Systems/6300__L16_ChannelCrossSections.pdf
+REAL FUNCTION FLOW(n,So,bw,h,z)
+real :: n,So,bw,z,h
+real :: WP,AREA
+        WP=bw+2*h*sqrt(1+z**2) !modified from bw+2*h*sqrt(1+h**2); tried (1+z**2)
+        AREA=(bw+z*h)*h
+        if(WP.lt.0) then
+                print *,"---lpr ERROR IN FLOW: Muskingum-Cunge ----"
+                print *,"--- !!! lpr ERROR: wetted paramter is zero!!! ----"
+                FLOW=0.00001 !(1/n)*sqrt(So)*(AREA**(5./3.)/(0.00000001**(2./3.)))
+                !stop
+        else
+                FLOW=(1/n)*sqrt(So)*(AREA**(5./3.)/(WP**(2./3.)))
+        end if
+
+END FUNCTION FLOW
+
+
+end module rapid_routing_MC 
+
+
+
